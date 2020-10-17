@@ -1,0 +1,673 @@
+---
+title: 'EDA: 911 Calls'
+author: "Cho Sungin, Jang Yoonseo"
+date: "Nov 9, 2016"
+output:
+  pdf_document:
+    toc: yes
+    latex_engine : xelatex
+---
+
+- File : `911.csv`
+- Used package: `dplyr`, `tidyr`, `xts`, `lubridate`, `qtlcharts`, `forecast`, `tseries`, `leaflet`, `ggplot2`, `plotly`, `dygraphs`, `viridis`, `graphics`
+
+------------------------------------
+
+# Introduction
+
+This is an exploratory analysis for data collected from **911 calls in Montgomery County**.
+
+Members of rescue team always risk many people's lives while they are working. Their work requires great deal of concentration for a very long time, as one little mistake can result in death. Hence, sufficient time for rest and relaxation is extremely important. However, a certain number of rescue workers on call are always necessary because it is impossible to know what kind of accident would happen in the future. We thought, if we can predict and forecast a general number of accidents in the future, it would be easier to allocate proper number of rescue workers at the right time. Which may also lead to a proper amount of rest time for them.
+
+The source of the `911.csv` data is "http://montcoalert.org/". This page provides information of 911 calls in Montgomery County. Montgomery County is located in Commonwealth of Pennsylvania. The data are collected from Dec 10, 2015 to Oct 25, 2016.
+
+-----------------------------------
+
+- These are the index of our script:
+    + Brief Explanation on "Accident Distribution", by **Mapping**
+    + 911 Calls in Montgomery County, **Generally**
+        + **Percentage** of Types 911 Calls
+        + How the number of 911 Calls varies as the **time goes by**
+        + **Correlation** among Types of 911 Calls
+        + **911 Call Trend** by Month, Day, Hour
+        + Summarized Result, by **Heat Map**
+    + 911 Calls in Montgomery County, by **Townships**
+        + **Mosaic Plot** by Types of 911 Calls
+        + **Mosaic plot** by Subtypes of 911 Calls
+        + Summarized Result, by **Heat Map for Each Townships**
+    + **Forecasting** the number of accidents in the future
+    
+<br><br>
+
+## Loading packages and Attributes of data
+
+```{r, message=FALSE, warning=FALSE}
+# Load packages
+library(dplyr) # Data manipulation
+library(tidyr) # Data manipulation
+library(xts) # Creating xts's object
+library(lubridate) #Helps dealing with dates a little easier
+library(qtlcharts) # Making plot of correlation table
+library(forecast) # Time series Forecast
+library(tseries) # Time series analysis
+library(leaflet) # Visualization
+library(ggplot2) # Visualization
+library(plotly) # Visualization
+library(dygraphs) # Visualization
+library(viridis) # Colormap
+library(graphics) # Mosaic plot
+```
+
+Now that our packages are loaded, let's read in and check the attributes of data.
+
+```{r}
+# Check data
+call <- read.csv("D:\\SI\\Dropbox\\탐색적 자료분석\\1st project\\911.csv")
+
+knitr::kable(head(call,n=3))
+
+str(call) # 123884 obs. of  9 variables
+``` 
+
+<br>
+
+These are the names, class type of variables. We can also check first few observations. In total, there are 123884 observations and 9 variables. Simple description of the variables is as follows. :
+
+Variable Name | Description
+--------------|----------------------------------------------------
+lat           | Latitude
+lng           | Longitude
+desc          | Description of the Emergency Call (EMS: Emergency Medical Service, Fire: Fire Accident, Traffic: Traffic Accident)
+zip           | Zipcode
+title         | Title
+timeStamp     | YYYY-MM-DD HH:MM:SS
+twp           | Township
+addr          | Address
+e             | Dummy variable (always 1)
+
+<br>
+
+---------------------------
+
+## Handling Data
+
+We had to handle the data. We created some new variables from existing variables and removed variables that we did not need.
+
+```{r}
+calls <- separate(call,title,c("Types","Subtypes"),sep=":")
+# Separate Title into Types and Subtypes.
+
+calls$timeStamp <- as.POSIXlt(call$timeStamp)
+calls$Date <- as.Date(calls$timeStamp)
+calls$Year<-factor(year(calls$Date))
+calls$Month<-factor(month(calls$Date))
+calls$Day<-factor(day(calls$Date))
+calls$Hour <- factor(calls$timeStamp$hour)
+calls$zip<-factor(calls$zip)
+calls$Subtypes<-factor(calls$Subtypes)
+calls$Types<-factor(calls$Types)
+# Handling timestamp variable and change the classes of some variables into factor.
+
+calls<-calls[,-10]
+# Erase unnecessary dummy variable, e, as it is always 1.
+
+knitr::kable(head(calls,n=3))
+
+str(calls) # 123884 obs. of  13 variables
+```
+
+<br><br>
+
+# Exploratory Data Analysis
+
+## Brief Explanation on "Accident Distribution"
+
+```{r}
+call_map <- leaflet() %>% addTiles() %>% setView(lng=-75.2, lat=40.1, zoom=10) %>% addMarkers(data=calls, lng= ~lng, lat= ~lat, clusterOptions = markerClusterOptions())
+call_map
+```
+
+<br>
+
+- As we explained above, data are lacated in **Montgomery County, PA** .
+- Most of the 911 calls are made in **Norristown(36,264)** , which is followed by **Abington(17,911)** and **Lansdale(17,504)** .
+
+<br>
+
+------------------------------
+
+## 911 Calls in Montgomery County, Generally
+
+### Percentage of Types of 911 Calls
+
+Different types of accidents require different types of experts. We checked the percentage of each three types of calls by pie chart.
+
+```{r}
+freqt.calls <-as.data.frame(table(calls$Type))
+freqt.calls
+
+plot_ly(freqt.calls,labels=~Var1,values=~Freq,type='pie',
+        textposition='inside',
+        textinfo='label+percent',
+        insidetextfont=list(color='#FFFFFF',size=20),
+        hoverinfo='text',
+        marker=list(colors=c('rgb(0,204,102)','rgb(211,94,96)','rgb(51,153,255)'),
+                    line=list(color='#FFFFFF',width=1)),
+                    showlegend = FALSE)%>%
+  layout(title="Frequency of Three Types of 911 calls",
+         xaxis=list(showgrid=F,zeroline=F,showticklabels=F),
+         yaxis=list(showgrid=F,zeroline=F,showticklabels=F))
+```
+
+<br>
+
+- **EMS** has accounted for **49.2%** and is followed by **Traffic(35.8%)** and **Fire(15.1%)** . 
+- EMS showed the largest number. Perhaps this is because people gets hurt in most of the accident, regardless of its types.
+
+<br>
+
+------------------------------------
+
+### How the number of 911 Calls varies as the time goes by (for each types)
+
+We were curious whether number of calls for EMS would be higher than the other two variables, even within a certain period of time. We used the time series graph to figure it out.
+
+```{r}
+fre.calls.ems <-as.data.frame(table(calls[calls$Types=="EMS",]$Date))
+fre.calls.fire <-as.data.frame(table(calls[calls$Types=="Fire",]$Date))
+fre.calls.traffic <-as.data.frame(table(calls[calls$Types=="Traffic",]$Date)) 
+
+fre.calls.ems$Var1 <- as.Date(fre.calls.ems$Var1)
+fre.calls.fire$Var1 <- as.Date(fre.calls.fire$Var1)
+fre.calls.traffic$Var1 <- as.Date(fre.calls.traffic$Var1) 
+# Convert between character representations and objects of class "Date"
+
+ems.ts <- xts(fre.calls.ems$Freq, fre.calls.ems$Var1)
+fire.ts <- xts(fre.calls.fire$Freq, fre.calls.fire$Var1)
+traffic.ts <- xts(fre.calls.traffic$Freq, fre.calls.traffic$Var1) 
+# Creating an extensible time-series object
+
+names(ems.ts) <- "EMS"
+names(fire.ts) <- "FIRE"
+names(traffic.ts) <- "TRAFFIC" # Specify a column name 
+
+ts.types <- cbind(ems.ts, fire.ts, traffic.ts)
+
+dygraph(ts.types, main="Three Types of 911 calls") %>% 
+dyRangeSelector() %>% # Choosing a range becomes available
+dyOptions(colors=c('rgb(0,204,102)','rgb(211,94,96)','rgb(51,153,255)')) # Allocates each line's  colors
+```
+
+<br>
+
+- Overall, number of calls for EMS is higher than the others. 
+- Number of calls for Traffic, rarely have exceeded the number of calls for EMS.
+- Especially, number of calls for traffic in **"23, Jan"** was significantly high.
+- Numbers of each three types of 911 calls seem correlated.
+- The graph did not show any trend.
+
+<br>
+
+----------------------------------
+
+### Correlation among Types of 911 Calls
+
+In order to see correlations between three types, we made a correlation matrix. By **mousing over** on a square box, we can see a **correlation coefficient** and by **clicking** it, we can see a **scatter plot**.
+
+```{r message=FALSE}
+month <- as.data.frame(calls %>% select(-timeStamp) %>% group_by(Month, Types) %>% summarise(N=n()) %>% spread(Types, N))
+
+day <- as.data.frame(calls %>% select(-timeStamp) %>% group_by(Day, Types) %>% summarise(N=n()) %>% spread(Types, N))
+
+hour <- as.data.frame(calls %>% select(-timeStamp) %>% group_by(Hour, Types) %>% summarise(N=n()) %>% spread(Types, N))
+
+iplotCorr(month[,2:4], reorder=TRUE, chartOpts=list(cortitle="Month", scattitle="Scatterplot"))
+iplotCorr(day[,2:4], reorder=TRUE, chartOpts=list(cortitle="Day", scattitle="Scatterplot"))
+iplotCorr(hour[,2:4], reorder=TRUE, chartOpts=list(cortitle="Hour", scattitle="Scatterplot"))
+```
+
+<br>
+
+- All types of 911 calls showed quite large correlation coefficient regardless of month, day, and hour.
+- We can assume that all types of accidents are **mutually correlated** .
+
+<br>
+
+#### What happened in 2016-01-23?
+
+Big accident might have occured in 23, Jan. We compared the number of accidents happened in 22nd and 23rd by hours. If there were a critical accident in 23rd, then a number of 911 calls for traffic accidents at a specific time would be significantly large.
+
+```{r}
+nr<-c()
+nn<-c()
+for (i in 0:23){
+nr[i+1]<-nrow(calls[calls$Date=="2016-01-23" & calls$Types=="Traffic"&calls$Hour==i,])
+nn[i+1]<-nrow(calls[calls$Date=="2016-01-22" & calls$Types=="Traffic"&calls$Hour==i,])
+}
+nrn<-0:23
+dnr<-data.frame(time=nrn,value=nr)
+dnn<-data.frame(time=nrn,value=nn)
+dnr$name<-"2016-01-23"
+dnn$name<-"2016-01-22"
+dd<-rbind(dnr,dnn)
+
+ggplot(dd, aes(time, value, fill = name)) + geom_bar(position = "dodge",stat="identity")+labs(title="What Happened in 23 Jan, 2016?",x="Hour",y="Traffic Freq")+theme_bw()+scale_fill_discrete(name="Date")
+```
+
+<br>
+
+- The number of 911 calls for traffic in 23rd is generally larger than 22nd.
+- It seems like there were no critical accident on that day.
+
+<br>
+
+-------------------------------------
+
+### 911 Call Trend by Month, Day, Hour
+
+#### Calls - Monthly
+
+```{r}
+month$Month<-c(1:10,12)
+month<-month[c(11,1:10),]
+
+plot_ly(month, x = ~Month, y = ~EMS, type = 'bar', name = 'EMS') %>%
+  add_trace(y = ~Traffic, name = 'Traffic') %>% add_trace(y = ~Fire, name = 'Fire') %>% 
+  layout(title="911 Calls -Monthly", yaxis = list(title = 'Count'), barmode = 'stack' ,xaxis=list(type = "category",  categoryorder = "array",
+  categoryarray = c(12,1:10)))
+```
+
+<br>
+
+- Frequency of 911 calls are lower in December and October because there are less data in those months (Oct : 25, Dec : 22) and frequency of 911 calls in January is slightly higher than others as there were significantly large number of calls on 23 January.
+- Except for these months, frequency of 911 calls of the months are very alike.
+
+<br>
+
+#### Calls - Daily
+
+```{r}
+plot_ly(day, x = ~Day, y = ~EMS, type = 'bar', name = 'EMS') %>%
+  add_trace(y = ~Traffic, name = 'Traffic') %>% add_trace(y = ~Fire, name = 'Fire') %>% 
+  layout(title="911 Calls -Daily", yaxis = list(title = 'Count'), barmode = 'stack')
+```
+
+<br>
+
+- Frequency of 911 calls are low from 1st to 9th and from 26th to 31st. Frequency of 911 calls in 31st is significantly low. This may be due to less data in October, December, and months that do not consist of 31 days. Furthermore, frequency of 911 calls is very high on 23rd as there were significantly large number of 911 calls for traffic on 23 January.
+- Considering these factors, no trend is seen, when we look at the frequency of the 911 calls of the days.
+
+<br>
+
+#### Calls - Hourly
+```{r}
+plot_ly(hour, x = ~Hour, y = ~EMS, type = 'bar', name = 'EMS') %>%
+  add_trace(y = ~Traffic, name = 'Traffic') %>% add_trace(y = ~Fire, name = 'Fire') %>% 
+  layout(title="911 Calls - Hourly", yaxis = list(title = 'Count'), barmode = 'stack')
+```
+
+<br>
+
+- Frequency of 911 calls are certainly higher from 7am to 9pm.
+- People lead their lives in the daytime. Therefore, accidents are likely to occur more often in this time-period.
+- It seems like the frequency of 911 calls differs by hours rather than month and days.
+
+<br>
+
+#### Calls - Weekly
+```{r}
+date_calls<-unique(calls$Date)
+
+thurs<-date_calls[seq(from=1,to=321,by=7)]
+fris<-date_calls[seq(from=2,to=321,by=7)]
+sats<-date_calls[seq(from=3,to=321,by=7)]
+suns<-date_calls[seq(from=4,to=321,by=7)]
+mons<-date_calls[seq(from=5,to=321,by=7)]
+tues<-date_calls[seq(from=6,to=321,by=7)]
+weds<-date_calls[seq(from=7,to=321,by=7)]
+
+calls$Week[is.element(calls$Date,thurs)==TRUE]<-"Thursday"
+calls$Week[is.element(calls$Date,fris)==TRUE]<-"Friday"
+calls$Week[is.element(calls$Date,sats)==TRUE]<-"Saturday"
+calls$Week[is.element(calls$Date,suns)==TRUE]<-"Sunday"
+calls$Week[is.element(calls$Date,mons)==TRUE]<-"Monday"
+calls$Week[is.element(calls$Date,tues)==TRUE]<-"Tuesday"
+calls$Week[is.element(calls$Date,weds)==TRUE]<-"Wednesday"
+calls$Week<-as.factor(calls$Week)
+levels(calls$Week)<-c("Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday")
+str(calls$Week)
+
+week <- as.data.frame(calls %>% select(-timeStamp) %>% group_by(Week, Types) %>% summarise(N=n()) %>% spread(Types, N))
+
+plot_ly(week, x = ~Week, y = ~EMS, type = 'bar', name = 'EMS') %>%
+  add_trace(y = ~Traffic, name = 'Traffic') %>% add_trace(y = ~Fire, name = 'Fire') %>% 
+  layout(title="911 Calls -Weekly", yaxis = list(title = 'Count'), barmode = 'stack')
+```
+
+<br>
+
+- As you can see, during weekdays, frequency of total 911 calls and their ratio of types are all alike.
+- However, frequency of total 911 calls on weekend is lower than that is on weekdays.
+- We can see that the numbers of 911 calls for fire and EMS on weekend are almost identical with the numbers of 911 calls for fire an EMS on weekdays.
+- Only the frequency of 911 calls for traffic showed the difference. It decreased from about 7,000 calls to about 5,000 calls.
+- It seems reasonable to assume that people have less traffic accident on weekend as they do not have to go to work.
+
+<br>
+
+----------------------------------------
+
+### Summarized Result, by Heat Map
+
+A heat map is a three-dimensional representation of data in which values are represented by colors. Let's see heatmaps of 911 calls by Month, Day and Hour. The number of 911 calls gets larger as a color of square goes closer to yellow.
+
+#### 911 Calls by "Day and Hour" & "Month and Hour"
+
+```{r}
+day_hour <- as.data.frame(calls[, c("Day", "Hour")] %>% group_by(Day, Hour) %>% summarise(N = n()))
+
+ggplotly(ggplot(day_hour, aes(Day, Hour, fill = N)) + geom_tile(color = "white", size = 0.1) + scale_fill_viridis(name="Number of Calls") + coord_equal() + labs(title="911 Calls by Day and Hour"))
+```
+
+```{r}
+month_hour <- as.data.frame(calls[, c("Month", "Hour")] %>% group_by(Month, Hour) %>% summarise(N = n()))
+levels(month_hour$Month) <- c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Dec")
+
+ggplotly(ggplot(month_hour, aes(Month,Hour, fill = N)) + geom_tile(color = "white", size = 0.1) + scale_fill_viridis(name="Number of Calls") + coord_equal() + labs(title="911 Calls by Month and Hour"))
+```
+
+<br>
+
+- By looking at the two heat maps above, we can assume that majority of the calls are during daytime, as most of the yellow squares are concentrated in the middle of the plot, horizontally.
+
+<br>
+
+#### 911 Calls by Day and Month
+
+In the following Heatmap, 
+There are blanks in February, April, June, September because they do not consist of 31 days.
+Blanks in October and December are because there are less data in these months, as explained above.
+
+```{r}
+day_hour <- as.data.frame(calls[, c("Day", "Month")] %>% group_by(Day, Month) %>% summarise(N = n()))
+levels(day_hour$Month) <- c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Dec")
+
+ggplotly(ggplot(day_hour, aes(Day,Month, fill = N)) + geom_tile(color = "white", size = 0.1) + scale_fill_viridis(name="Number of Calls") + coord_equal() + labs(title="911 Calls by Day and Hour"))
+```
+
+<br>
+
+- No pattern can be seen in the heatmap of day and month.
+- Rather than day and month, it is obvious that the numbers of 911 calls are mainly depended on the hours.
+
+<br>
+
+----------------------------
+
+<br>
+
+## 911 Calls in Montgomery County, by Townships
+
+### Mosaic Plot by Types of 911 Calls 
+
+```{r}
+town_type <- as.data.frame(calls %>% select(Types, twp))
+freq.town <- as.data.frame(table(calls$twp)) %>% arrange(desc(Freq))
+top<-as.character(freq.town[1:10,1])
+top_town<-town_type[is.element(town_type$twp,top),]
+topab<-c("LM", "ABING", "NORRIS", "UM", "CHEL", "POTT", "UML", "LP", "PLY", "HOR")
+top_town$twp <- as.character(top_town$twp)
+top_town$twp<-factor(top_town$twp,levels=top)
+levels(top_town$twp)<-topab
+table_1 <- with(top_town, table(twp,Types))
+mosaicplot(table_1, main="Mosaic Plot by Types and Top 10 townships",color=c('light green','tomato','light blue'),cex.axis =1,off=3,border="white",xlab="Township",ylab="Type")
+```
+
+<br>
+
+- Simple description of the abbreviated word is as follows. :
+    + `LM` : LOWER MERION
+    + `ABING` : ABINGTON
+    + `NORRIS` : NORRISTOWN
+    + `UM` : UPPER MERION
+    + `CHEL` : CHELTENHAM
+    + `POTT` : POTTSTOWN
+    + `UML` : UPPER MORELAND
+    + `LP` : LOWER PROVIDENCE
+    + `PLY` : PLYMOUTH
+    + `HOR` : HORSHAM
+
+<br>
+
+- The above plot represents the ratio of types of 911 calls that top 10 townships have.
+- Generally, EMS calls have a highest frequency followed by Traffic and Fire.
+- However, their ratio shows difference among each townships.
+- The county council should allocate rescue workers into each townships proportionally referencing this plot.
+
+<br>
+
+-------------------------------------
+
+### How does the Top 5 subtypes vary among top 10 township?
+
+#### Top 5 Subtypes
+```{r}
+ems.subtype <- as.data.frame(table(calls[calls$Types=="EMS",]$Subtypes)) %>% arrange(desc(Freq))
+ems.subtype$Var1<-paste(ems.subtype$Var1,"E",sep=" - ")
+
+fire.subtype <- as.data.frame(table(calls[calls$Types=="Fire",]$Subtypes)) %>% arrange(desc(Freq))
+fire.subtype$Var1<-paste(fire.subtype$Var1,"F",sep=" - ")
+
+traffic.subtype <- as.data.frame(table(calls[calls$Types=="Traffic",]$Subtypes)) %>% arrange(desc(Freq))
+traffic.subtype$Var1<-paste(traffic.subtype$Var1,"T")
+
+freq.sub <- rbind(ems.subtype,fire.subtype,traffic.subtype)%>%arrange(desc(Freq))
+
+freq.sub %>% head(5) %>% ggplot(aes(reorder(Var1,Freq), Freq)) + geom_bar(stat = "identity", aes(fill=Var1)) + coord_flip() + theme_bw() + ggtitle("911 Calls") + xlab("Top 5 Subtypes") + ylab("Frequency") + theme(legend.position = "none") + geom_text(aes(label=Freq, y= Freq + 2*sign(Freq),size=2)) 
+```
+
+<br>
+
+- These are the top 5 subtypes that have largest frequency.
+- Subtypes related to vehicles are ranked in 1st and 2nd.
+- Subtypes from EMS are even lower than subtype from Fire. Subtypes of EMS were evenly distributed when we checked the data. We thought that it might be the reason.
+
+<br>
+
+#### Mosaic plot by Subtypes of 911 Calls
+
+```{r}
+ems.sub <- as.data.frame(calls[calls$Types=="EMS",] %>% select(Subtypes, twp))
+ems.sub$Subtypes <- paste(ems.sub$Subtypes,"E",sep=" - ")
+fire.sub <- as.data.frame(calls[calls$Types=="Fire",] %>% select(Subtypes, twp))
+fire.sub$Subtypes <- paste(fire.sub$Subtypes,"F",sep=" - ")
+traffic.sub <- as.data.frame(calls[calls$Types=="Traffic",] %>% select(Subtypes, twp))
+traffic.sub$Subtypes <- paste(traffic.sub$Subtypes,"T")
+
+mosaic.sub <- rbind(ems.sub, fire.sub, traffic.sub)
+top <- as.character(freq.town[1:10,1]) # Top 10 township
+topp <- as.character(freq.sub[1:5,1]) # Top 5 Subtypes
+mosaic.sub <- mosaic.sub[is.element(mosaic.sub$twp,top),]
+mosaic.sub <- mosaic.sub[is.element(mosaic.sub$Subtypes,topp),]
+topabc <- c("VA-T","DV-T","FA-F","RE-E","CE-E")
+topab <- c("LM", "ABING", "NORRIS", "UM", "CHEL", "POTT", "UML", "LP", "PLY", "HOR")
+mosaic.sub$twp <- as.character(mosaic.sub$twp)
+mosaic.sub$Subtypes <- as.character(mosaic.sub$Subtypes)
+mosaic.sub$twp <- factor(mosaic.sub$twp,levels=top)
+mosaic.sub$Subtypes <- factor(mosaic.sub$Subtypes,levels=topp)
+levels(mosaic.sub$twp)<-topab
+levels(mosaic.sub$Subtypes)<-topabc
+table_2 <- with(mosaic.sub, table(twp,Subtypes))
+mosaicplot(table_2, las=1,main="Mosaic Plot by Top 5 Subtypes and Top 10 townships", cex.axis =1,off=3,border="white",xlab="Township",ylab="Subtype",color=c('orange','sky blue','green','steelblue4','tomato1'))
+```
+
+- Simple description of the abbreviated word is as follows. :
+    + `VA-T` : VEHICLE ACCIDENT (Traffic)
+    + `DV-T` : DISABLED VEHICLE (Traffic)
+    + `FA-F` : FIRE ALARM (Fire)
+    + `RE-E` : RESPIRATORY EMERGENCY (EMS)
+    + `CE-E` : CARDIAC EMERGENCY (EMS)
+
+<br>
+
+- Frequency of 911 calls for Traffic is highest when you look at the plot.
+- Norristown and Pottstown showed relatively low ratio for 911 calls for Traffic.
+- Pottstown is located at very edge of the county. Hence, low traffic accidents may be reasoned.
+- However, Norristown is located at the center of county and has pretty large number of a floating population. It was unexpected result.
+
+<br>
+
+-------------------------------------------------
+
+<br>
+
+### Summarized Result, by Heat Map for Each Townships
+
+<br>
+
+#### 911 Calls by "Month and Hour" & "Day and Hour" (without transformation)
+
+```{r}
+monthhour.sub <- as.data.frame(calls[, c("Month", "Hour","twp")] %>% group_by(Month, Hour,twp) %>% summarise(N = n()))
+top<-as.character(freq.town[1:10,1])
+monthhour.sub <- monthhour.sub[is.element(monthhour.sub$twp,top),]
+levels(monthhour.sub$Month) <- c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Dec")
+
+ggplot(monthhour.sub, aes(Month, Hour, fill = N)) + geom_tile(color = "white", size = 0.1) + scale_fill_viridis(name="Number of Calls") + coord_equal() + labs(title="911 Calls by Month and Hour") + facet_wrap(~twp, ncol=5) + theme(legend.position="bottom") 
+```
+
+```{r}
+dayhour.sub <- as.data.frame(calls[, c("Day", "Hour","twp")] %>% group_by(Day, Hour,twp) %>% summarise(N = n()))
+top<-as.character(freq.town[1:10,1])
+dayhour.sub <- dayhour.sub[is.element(dayhour.sub$twp,top),]
+
+
+ggplot(dayhour.sub, aes(Day, Hour, fill = N)) + geom_tile(color = "white", size = 0.1) + scale_fill_viridis(name="Number of Calls") + coord_equal() + labs(title="911 Calls by Day and Hour") + facet_wrap(~twp, ncol=5) + theme(legend.position="bottom")
+```
+
+<br>
+
+- Frequency of total 911 calls is relatively too high in Lower Merion. Therefore, other township's heat map were too dark in overall plot.
+- Pattern could not be seen distinctively.
+
+<br>
+
+#### 911 Calls by "Month and Hour" & "Day and Hour" (with square-rooted frequency)
+
+```{r}
+ggplot(monthhour.sub, aes(Month, Hour, fill = sqrt(N) )) + geom_tile(color = "white", size = 0.1) + scale_fill_viridis(name="Number of Calls") + coord_equal() + labs(title="911 Calls by Month and Hour") + facet_wrap(~twp, ncol=5) + theme(legend.position="bottom") 
+```
+
+```{r} 
+ggplot(dayhour.sub, aes(Day, Hour, fill = sqrt(N))) + geom_tile(color = "white", size = 0.1) + scale_fill_viridis(name="Number of Calls") + coord_equal() + labs(title="911 Calls by Day and Hour") + facet_wrap(~twp, ncol=5) + theme(legend.position="bottom")
+```
+
+<br>
+
+- To lower the differences between frequencies of 911 calls among townships, we square rooted the frequencies of each townships.
+- We could see an explicit pattern. All heat maps were more deeply coloured in yellow at the center, regardless of the townships.
+- When we look at the heat map drawn for each townships, frequency of 911 calls differs mostly by hours as well.
+
+<br>
+
+-------------------------------
+
+## Forecasting the number of accidents in the future
+
+Now let's forecast the number of accidents that might happen in the future. Time-series analysis is used for analyzation. 
+
+First, we computed **autocorrelation function and partial autocorrelation function** to check briefly whether the data are stationary time-series. 
+
+Second, we checked whether differences are necessary by using **ndiffs** function. 
+
+Third, we did Dickey-Fuller test for null-hypothesis, data are non-stationary. We could reject null-hypothesis. 
+
+Lastly, we tried to find the best ARIMA model by their AIC, AICc and BIC values.
+
+<br>
+
+```{r, include=FALSE}
+date <- as.data.frame(calls %>% select(-timeStamp) %>% group_by(Date, Types) %>% summarise(N=n()) %>% spread(Types, N))
+
+ems_ts <- ts(date[,2],frequency=7)
+fire_ts <- ts(date[,3],frequency=7) 
+traffic_ts <- ts(date[,4],frequency=7)
+# create time-series objects
+
+acf(ems_ts) # lag.max: maximum lag at which to calculate the acf
+pacf(ems_ts)
+acf(fire_ts) 
+pacf(fire_ts)
+acf(traffic_ts) 
+pacf(traffic_ts)
+# Computes Autocorrelation function & Partial autocorrelation function
+
+ndiffs(ems_ts)
+ndiffs(fire_ts)
+ndiffs(traffic_ts)
+# Estimate the number of differences required to make a given time series stationary
+
+adf.test(ems_ts)
+adf.test(fire_ts)
+adf.test(traffic_ts)
+# Computes the Dickey-Fuller test for the null-hypothesis that the data are non-stationary
+
+fitted_ems <- auto.arima(ems_ts)
+fitted_fire <- auto.arima(fire_ts)
+fitted_traffic <- auto.arima(traffic_ts)
+# Finds best ARIMA model according to either AIC, AICc or BIC value
+```
+
+```{r}
+forecasted_ems <- forecast(fitted_ems,15)
+forecasted_fire <- forecast(fitted_fire,15)
+forecasted_traffic <- forecast(fitted_traffic,15)
+# forecasting from time series
+
+op <- par(mfrow = c(3,1),
+          mar = c(2,4,1,2)+.1, pty='m')
+plot(forecasted_ems, main="Forecast: Emergency Medical Service", xlab="Time",xaxt = "n")
+axis(1, at=1:51, labels=seq(1,357,by=7))
+plot(forecasted_fire, main="Forecast: Fire", xlab="Time",xaxt="n")
+axis(1, at=1:51, labels=seq(1,357,by=7))
+plot(forecasted_traffic, main="Forecast: Traffic", xlab="Time",xaxt="n")
+axis(1, at=1:51, labels=seq(1,357,by=7))
+par(op)
+```
+
+```{r}
+Date <- c("2016-10-26", "2016-10-27", "2016-10-28", "2016-10-29", "2016-10-30", "2016-10-31", "2016-11-01")
+EMS <- round(as.data.frame(forecast(fitted_ems,7))[,1],2)
+Fire <- round(as.data.frame(forecast(fitted_fire,7))[,1],2)
+Traffic <- round(as.data.frame(forecast(fitted_traffic,7))[,1],2)
+forecast_day <- data.frame(Date, EMS, Fire, Traffic)
+
+knitr::kable(forecast_day)
+```
+
+
+<br>
+
+- These are the forecasted number of 911 calls of three types of data for 7 days(1 week), respectively.
+- Honestly, the result of forecasting is very digressed from our early purpose. We wanted to use forecasted result to allocate rescue workers properly. However, this forecast is not sufficient to do that.
+- What we analyzed were time-series data, collected daily. Also, it is data about accidents. Although, it satisfied the non-stationary, there were no patterns and there were unexplainable fluctuation in the data.
+- Hence, we thought time-series analysis is meaningless for analyzing this data.
+
+<br><br>
+
+# Conclusion
+
+- It's impossible to predict frequency of 911 calls using this data.
+
+- We should do Baysian analysis to predict the accidents.
+
+- We ought to collect more variables that are related closely to the occurence of each types of accidents(such as floating population, weather, and etc.) for Bayesian analysis. This data is not enough.
+
+- By analyzing this data, we were highly surprised once again by rescue workers' devotion to the society. Most of the work has its busy season and off-season. We figured out that ,for rescue workers, every day was busy season. Even at night, some of them have to be on night duty. I want to claim that, we must have a deep respect for them. Furthermore, the state should provide them with high quality of welfare and benefit.
+
+- All types of accidents are laregly correlated with each others. What we have to focus on, is putting our effort in preventing accidents from happening, as it may result in more additional accidents.
+
+<br>
+
+*****************************
+    * Writer: Cho Sungin, Jang Yoonseo
+    * Creation date: Nov 9, 2016
