@@ -3,7 +3,7 @@
 <img src="figs/911_image.jpg" width="500">
 
 
-### [Project Result](doc/EDA_ 911 Calls.pdf)
+### [Project Result](doc/EDA_ 911_Calls.pdf)
 
 + This project is conducted by Sung In Cho (sc4393)
 
